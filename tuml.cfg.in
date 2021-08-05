@@ -1,0 +1,11 @@
+[tuml]
+log_level = <debug, info, warning, error, critical>
+
+[db]
+file = <db_file>
+
+[tumblr-auth]
+consumer_key = <consumer_key>
+consumer_secret = <consumer_secret>
+oauth_token = <oauth_token>
+oauth_secret = <oauth_secret>
