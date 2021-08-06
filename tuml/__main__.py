@@ -70,6 +70,7 @@ def main():
 #    print(json.dumps(hmmm, indent=2, sort_keys=True))
 
 #    print(f"{blog['name']} {blog['title']} {blog['posts']} {blog['updated']} {blog['url']} {blog['description']}")
+#    logging.info('User [%s] succesfully added.', admin_email)
 
 
 if __name__ == '__main__':
