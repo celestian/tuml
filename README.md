@@ -16,3 +16,5 @@ Tuml
 
 ## Resources
 * [docopt](http://docopt.org/)
+* [pytumblr](https://github.com/tumblr/pytumblr)
+* [tumblr API](https://www.tumblr.com/docs/en/api/v2)
