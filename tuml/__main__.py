@@ -3,6 +3,7 @@
 Usage:
   tuml [--cfg=<config_file>] init
   tuml [--cfg=<config_file>] enable <blog>...
+  tuml [--cfg=<config_file>] disable <blog>...
   tuml (-h | --help)
   tuml --version
 
@@ -56,6 +57,12 @@ def configuration_setup(args):
     return cfg
 
 
+def init_db(config):
+    db_engine = create_engine(f"sqlite:///{config['db']['file']}", echo=False)
+    sql_session = sessionmaker(bind=db_engine)
+    return sql_session()
+
+
 def main():
 
     args = docopt(__doc__, version='0.0.1')
@@ -76,16 +83,20 @@ def main():
 
     if args['enable']:
 
-        db_engine = create_engine(f"sqlite:///{config['db']['file']}", echo=False)
-        sql_session = sessionmaker(bind=db_engine)
-        db_session = sql_session()
-
-        client = TumblrClient(config, db_session)
-
+        client = TumblrClient(config, init_db(config))
         for blog in args['<blog>']:
             client.enable_blog(blog)
 
         return 0
+
+    if args['disable']:
+
+        client = TumblrClient(config, init_db(config))
+        for blog in args['<blog>']:
+            client.disable_blog(blog)
+
+        return 0
+
 
 #    hmmm = client.posts(args['<gallery>'], limit=1, offset=0, reblog_info=True, notes_info=True)
 

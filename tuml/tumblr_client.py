@@ -5,6 +5,7 @@ import pytumblr
 
 from db.tables import Blog, BlogState
 
+
 def get_avatar(blog):
     avatar_url = None
 
@@ -26,49 +27,84 @@ class TumblrClient:
         )
         self._db_session = db_session
 
+    def _change_blog_state(self, blog, from_state, to_state):
+        if blog.state == from_state:
+            blog.state = to_state
+            self._db_session.add(blog)
+            self._db_session.commit()
+            logging.info('Blog [%s] state changed: (%s --> %s).', blog.name, from_state, to_state)
+
+    def _save_blog(self, blog):
+
+        blog_record = Blog(
+            name=blog['name'],
+            title=blog['title'],
+            state=blog['state'],
+            description=blog['description'],
+            url=blog['url'],
+            avatar=blog['avatar'],
+            posts=blog['posts'],
+            updated=blog['updated']
+        )
+
+        self._db_session.add(blog_record)
+        self._db_session.commit()
+
+        logging.info('Blog [%s] (%s) successfully saved.', blog['name'], blog['state'])
+
     def enable_blog(self, blog_name):
-        blog_data = self._client.blog_info(blog_name)
 
-        if 'errors' in blog_data:
-            if blog_data['meta']['status'] == 404:
-                logging.error('Blog [%s] not found.', blog_name)
+        stored_blogs = self._db_session.query(Blog).filter(Blog.name == blog_name)
+        stored_blog_record = stored_blogs.first()
+        if stored_blog_record:
+            if stored_blog_record.state == BlogState.ENABLED:
+                logging.info('Blog [%s] is already enabled.', blog_name)
+            elif stored_blog_record.state == BlogState.NOT_FOUND:
+                logging.info('Blog [%s] is marked as (%s).', blog_name, BlogState.NOT_FOUND)
             else:
-                logging.critical(
-                    'Error [%i] occured while retrieving blog [%s].',
-                    blog_data['meta']['status'],
-                    blog_name
-                )
+                self._change_blog_state(stored_blog_record, BlogState.DISABLED, BlogState.ENABLED)
+                self._change_blog_state(stored_blog_record, BlogState.POTENTIAL, BlogState.ENABLED)
+        else:
+            blog_data = self._client.blog_info(blog_name)
+            # TODO: markni, ze jsme pouzili resource
 
-        if 'blog' in blog_data:
-            blog = blog_data['blog']
-
-            existing_blog = self._db_session.query(Blog).filter(Blog.name == blog['name'])
-            existing_blog_record = existing_blog.first()
-            if existing_blog_record:
-                if existing_blog_record.state == BlogState.ENABLED:
-                    logging.warning('Blog [%s] is already enabled.', blog['name'])
+            if 'errors' in blog_data:
+                if blog_data['meta']['status'] == 404:
+                    blog = {
+                        'name': blog_name,
+                        'title': None,
+                        'state': BlogState.NOT_FOUND,
+                        'description': None,
+                        'url': None,
+                        'avatar': None,
+                        'posts': 0,
+                        'updated': datetime.utcnow(),
+                    }
+                    self._save_blog(blog)
                 else:
-                    logging.info('Blog [%s] is [%s]', blog['name'], existing_blog_record.state)
-                    existing_blog_record.state = BlogState.ENABLED
-                    self._db_session.add(existing_blog_record)
-                    self._db_session.commit()
-
-                    logging.info('Blog [%s] successfully enabled again.', blog['name'])
-
+                    logging.warning(
+                        'Error [%i] occured while retrieving blog [%s].',
+                        blog_data['meta']['status'],
+                        blog_name
+                    )
+            elif 'blog' in blog_data:
+                blog = blog_data['blog']
+                blog['avatar'] = get_avatar(blog)
+                blog['state'] = BlogState.ENABLED
+                blog['updated'] = datetime.fromtimestamp(blog['updated'])
+                self._save_blog(blog)
             else:
+                logging.warning('Error occured while retrieving blog data [%s].', blog_data)
 
-                blog_record = Blog(
-                    name=blog['name'],
-                    title=blog['title'],
-                    state=BlogState.ENABLED,
-                    description=blog['description'],
-                    url=blog['url'],
-                    avatar=get_avatar(blog),
-                    posts=blog['posts'],
-                    updated=datetime.fromtimestamp(blog['updated'])
-                )
+    def disable_blog(self, blog_name):
 
-                self._db_session.add(blog_record)
-                self._db_session.commit()
-
-                logging.info('Blog [%s] successfully enabled.', blog['name'])
+        stored_blogs = self._db_session.query(Blog).filter(Blog.name == blog_name)
+        stored_blog_record = stored_blogs.first()
+        if stored_blog_record:
+            if stored_blog_record.state == BlogState.DISABLED:
+                logging.info('Blog [%s] is already disabled.', blog_name)
+            elif stored_blog_record.state == BlogState.NOT_FOUND:
+                logging.info('Blog [%s] is marked as (%s).', blog_name, BlogState.NOT_FOUND)
+            else:
+                self._change_blog_state(stored_blog_record, BlogState.ENABLED, BlogState.DISABLED)
+                self._change_blog_state(stored_blog_record, BlogState.POTENTIAL, BlogState.DISABLED)

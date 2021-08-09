@@ -9,7 +9,8 @@ DB_Base = declarative_base()
 class BlogState(enum.Enum):
     ENABLED = 1
     DISABLED = 2
-    NOT_FOUND = 3
+    POTENTIAL = 3
+    NOT_FOUND = 4
 
 
 class Blog(DB_Base):
