@@ -9,3 +9,8 @@ consumer_key = <consumer_key>
 consumer_secret = <consumer_secret>
 oauth_token = <oauth_token>
 oauth_secret = <oauth_secret>
+
+[tumblr-rate-limits]
+calls_per_minute = 300
+calls_per_hour = 1000
+calls_per_day = 5000
