@@ -4,6 +4,7 @@ Usage:
   tuml [--cfg=<config_file>] init
   tuml [--cfg=<config_file>] enable <blog>...
   tuml [--cfg=<config_file>] disable <blog>...
+  tuml [--cfg=<config_file>] update
   tuml (-h | --help)
   tuml --version
 
@@ -79,15 +80,11 @@ def main():
         DB_Base.metadata.create_all(db_engine)
         logging.info('New database [%s] initiated.', config['db']['file'])
 
-        return 0
-
     if args['enable']:
 
         client = TumblrClient(config, init_db(config))
         for blog in args['<blog>']:
             client.enable_blog(blog)
-
-        return 0
 
     if args['disable']:
 
@@ -95,10 +92,10 @@ def main():
         for blog in args['<blog>']:
             client.disable_blog(blog)
 
-        return 0
+    if args['update']:
 
-
-#    hmmm = client.posts(args['<gallery>'], limit=1, offset=0, reblog_info=True, notes_info=True)
+        client = TumblrClient(config, init_db(config))
+        client.update_blogs()
 
 
 if __name__ == '__main__':
