@@ -1,4 +1,5 @@
 import logging
+import sys
 from datetime import datetime
 from datetime import timedelta
 import json
@@ -73,6 +74,11 @@ class TumblrHandler:
 
     def blog_info(self, blog_name):
 
+        limits = self._get_limits()
+        if limits['minute'] < 5 or limits['hour'] < 5 or limits['day'] < 5:
+            logging.error('Close to exceeding the limits: $s.', limits)
+            sys.exit(0)
+
         dt_start = datetime.utcnow()
         blog_data = self._client.blog_info(blog_name)
         delta = datetime.utcnow() - dt_start
@@ -81,6 +87,11 @@ class TumblrHandler:
         return blog_data
 
     def posts(self, blog_name, limit, offset):
+
+        limits = self._get_limits()
+        if limits['minute'] < 5 or limits['hour'] < 5 or limits['day'] < 5:
+            logging.error('Close to exceeding the limits: $s.', limits)
+            sys.exit(0)
 
         dt_start = datetime.utcnow()
         posts_data = self._client.posts(blog_name, limit, offset, notes_info=True)
