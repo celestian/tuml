@@ -80,7 +80,7 @@ class Call(DB_Base):
     __mapper_args__ = {"eager_defaults": True}
 
     id = Column(Integer, primary_key=True)
-    dt = Column(DateTime)
+    time = Column(DateTime)
     call = Column(Enum(CallFunc))
     limit = Column(Integer)
     duration = Column(Integer)

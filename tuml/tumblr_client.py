@@ -24,9 +24,9 @@ class TumblrHandler:
     def __init__(self, config, db_session):
         self._db_session = db_session
 
-        self._calls_per_minute = config['tumblr-rate-limits']['calls_per_minute']
-        self._calls_per_hour = config['tumblr-rate-limits']['calls_per_hour']
-        self._calls_per_day = config['tumblr-rate-limits']['calls_per_day']
+        self._calls_per_minute = int(config['tumblr-rate-limits']['calls_per_minute'])
+        self._calls_per_hour = int(config['tumblr-rate-limits']['calls_per_hour'])
+        self._calls_per_day = int(config['tumblr-rate-limits']['calls_per_day'])
 
         self._client = pytumblr.TumblrRestClient(
             config['tumblr-auth']['consumer_key'],
@@ -35,68 +35,78 @@ class TumblrHandler:
             config['tumblr-auth']['oauth_secret'],
         )
 
-    def _get_limits(self):
+    def _mark_call(self, timestamp, call, limit, duration):
+
+        call = Call(time=timestamp, call=call, limit=limit, duration=duration)
+        self._db_session.add(call)
+        self._db_session.commit()
+
+    def get_limits(self):
 
         now = datetime.utcnow()
 
         day_overflow = timedelta(
-            hours=now.hours,
-            minutes=now.minutes,
-            seconds=now.seconds,
-            milliseconds=now.milliseconds,
-            microseconds=now.microseconds
+            hours=now.hour,
+            minutes=now.minute,
+            seconds=now.second,
+            microseconds=now.microsecond
         )
         hour_overflow = timedelta(
-            minutes=now.minutes,
-            seconds=now.seconds,
-            milliseconds=now.milliseconds,
-            microseconds=now.microseconds
+            minutes=now.minute,
+            seconds=now.second,
+            microseconds=now.microsecond
         )
         minute_overflow = timedelta(
-            seconds=now.seconds,
-            milliseconds=now.milliseconds,
-            microseconds=now.microseconds
+            seconds=now.second,
+            microseconds=now.microsecond
         )
 
-        day = (now - day_overflow).isoformat()
-        hour = (now - hour_overflow).isoformat()
-        mins = (now - minute_overflow).isoformat()
+        day = (now - day_overflow).strftime("%Y-%m-%d %H:%M:%S")
+        hour = (now - hour_overflow).strftime("%Y-%m-%d %H:%M:%S")
+        mins = (now - minute_overflow).strftime("%Y-%m-%d %H:%M:%S")
 
-        day_used = self._db_session.query(func.count(Call.id)).filter(Call.dt >= day).scalar()
-        hour_used = self._db_session.query(func.count(Call.id)).filter(Call.dt >= hour).scalar()
-        minute_used = self._db_session.query(func.count(Call.id)).filter(Call.dt >= mins).scalar()
+        day_used = self._db_session.query(func.count(Call.id)).filter(Call.time >= day).scalar()
+        hour_used = self._db_session.query(func.count(Call.id)).filter(Call.time >= hour).scalar()
+        minute_used = self._db_session.query(func.count(Call.id)).filter(Call.time >= mins).scalar()
 
-        return {
+        limits = {
             'day': self._calls_per_day - day_used,
             'hour': self._calls_per_hour - hour_used,
             'minute': self._calls_per_minute - minute_used,
         }
 
+        if limits['minute'] < 5 or limits['hour'] < 5 or limits['day'] < 5:
+            limits['exceeding_limit'] = True
+        else:
+            limits['exceeding_limit'] = False
+
+        return limits
+
     def blog_info(self, blog_name):
 
-        limits = self._get_limits()
-        if limits['minute'] < 5 or limits['hour'] < 5 or limits['day'] < 5:
-            logging.error('Close to exceeding the limits: $s.', limits)
+        tumblr_limits = self.get_limits()
+        if tumblr_limits['exceeding_limit']:
+            logging.error('Close to exceeding the limits: %s.', tumblr_limits)
             sys.exit(0)
 
-        dt_start = datetime.utcnow()
+        timestamp = datetime.utcnow()
         blog_data = self._client.blog_info(blog_name)
-        delta = datetime.utcnow() - dt_start
-        print(delta / timedelta(microseconds=1))
+        delta = (datetime.utcnow() - timestamp) / timedelta(microseconds=1)
+        self._mark_call(timestamp, CallFunc.BLOG_INFO, 1, delta)
 
         return blog_data
 
     def posts(self, blog_name, limit, offset):
 
-        limits = self._get_limits()
-        if limits['minute'] < 5 or limits['hour'] < 5 or limits['day'] < 5:
-            logging.error('Close to exceeding the limits: $s.', limits)
+        tumblr_limits = self.get_limits()
+        if tumblr_limits['exceeding_limit']:
+            logging.error('Close to exceeding the limits: %s.', tumblr_limits)
             sys.exit(0)
 
-        dt_start = datetime.utcnow()
-        posts_data = self._client.posts(blog_name, limit, offset, notes_info=True)
-        delta = datetime.utcnow() - dt_start
-        print(delta / timedelta(microseconds=1))
+        timestamp = datetime.utcnow()
+        posts_data = self._client.posts(blog_name, limit=limit, offset=offset, notes_info=True)
+        delta = (datetime.utcnow() - timestamp) / timedelta(microseconds=1)
+        self._mark_call(timestamp, CallFunc.POSTS, limit, delta)
 
         return posts_data
 
@@ -106,6 +116,11 @@ class TumblrClient:
     def __init__(self, config, db_session):
         self._db_session = db_session
         self._tumblr = TumblrHandler(config, db_session)
+
+        tumblr_limits = self._tumblr.get_limits()
+        if tumblr_limits['exceeding_limit']:
+            logging.error('Close to exceeding the limits: %s.', tumblr_limits)
+            sys.exit(0)
 
     def _change_blog_state(self, blog, from_state, to_state):
         if blog.state == from_state:
@@ -231,10 +246,12 @@ class TumblrClient:
         stored_blogs = self._db_session.query(Blog).filter(Blog.state == BlogState.ENABLED)
         stored_blog_records = stored_blogs.all()
         for blog in stored_blog_records:
-            posts_data = self._tumblr.posts(blog.name, limit=1, offset=0)
+            posts_data = self._tumblr.posts(blog.name, limit=1000, offset=0)
             if 'posts' in posts_data:
                 for post in posts_data['posts']:
                     if 'notes' in post:
                         for note in post['notes']:
                             self.save_potential_blog(note['blog_name'])
-            break
+
+    def limits(self):
+        print(self._tumblr.get_limits())

@@ -5,6 +5,7 @@ Usage:
   tuml [--cfg=<config_file>] enable <blog>...
   tuml [--cfg=<config_file>] disable <blog>...
   tuml [--cfg=<config_file>] update
+  tuml [--cfg=<config_file>] limits
   tuml (-h | --help)
   tuml --version
 
@@ -96,6 +97,12 @@ def main():
 
         client = TumblrClient(config, init_db(config))
         client.update_blogs()
+
+
+    if args['limits']:
+
+        client = TumblrClient(config, init_db(config))
+        client.limits()
 
 
 if __name__ == '__main__':
