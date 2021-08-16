@@ -20,12 +20,14 @@ import logging
 import json
 import configparser
 from docopt import docopt
+import jinja2
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from db.tables import DB_Base
 from tumblr_client import TumblrClient
+from output_handler import OutputHandler
 
 
 def configuration_setup(args):
@@ -95,9 +97,12 @@ def main():
 
     if args['update']:
 
-        client = TumblrClient(config, init_db(config))
-        client.update_blogs()
+        database = init_db(config)
+        #client = TumblrClient(config, database)
+        #client.update_blogs()
 
+        output = OutputHandler(config, database)
+        output.generate()
 
     if args['limits']:
 

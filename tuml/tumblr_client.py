@@ -138,7 +138,7 @@ class TumblrClient:
             description=blog['description'],
             url=blog['url'],
             avatar=blog['avatar'],
-            posts=blog['posts'],
+            post_count=blog['posts'],
             updated=blog['updated']
         )
 
@@ -171,7 +171,7 @@ class TumblrClient:
                         'description': None,
                         'url': None,
                         'avatar': None,
-                        'posts': 0,
+                        'post_count': 0,
                         'updated': datetime.utcnow(),
                     }
                     self._save_blog(blog)
@@ -222,7 +222,7 @@ class TumblrClient:
                         'description': None,
                         'url': None,
                         'avatar': None,
-                        'posts': 0,
+                        'post_count': 0,
                         'updated': datetime.utcnow(),
                     }
                     self._save_blog(blog)

@@ -1,5 +1,6 @@
 import enum
-from sqlalchemy import Column, Integer, Text, DateTime, Enum
+from sqlalchemy import Enum, Column, Integer, Text, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 
@@ -23,7 +24,8 @@ class Blog(DB_Base):
     description = Column(Text)
     url = Column(Text)
     avatar = Column(Text)
-    posts = Column(Integer)
+    post_count = Column(Integer)
+    posts = relationship("Post")
     updated = Column(DateTime)
 
 
@@ -32,7 +34,7 @@ class Post(DB_Base):
     __mapper_args__ = {"eager_defaults": True}
 
     sid = Column(Text, primary_key=True)
-    blog_name = Column(Text)
+    blog_name = Column(Text, ForeignKey('blogs.name'))
     post_type = Column(Text)
     created = Column(DateTime)
     img_500 = Column(Text)

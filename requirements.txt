@@ -2,5 +2,6 @@ wheel
 autopep8
 pylint
 docopt
+jinja2
 pytumblr
 sqlalchemy

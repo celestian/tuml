@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<meta charset="UTF-8">
+<title>tuml</title>
+</head>
+<body>
+
+<h1>Potential new galleries</h1>
+
+<ul>
+{% for blog in blogs %}
+  <li><a target="_blank" href="{{ blog.url }}">{{ blog.title }}</a> | {{ blog.posts}} | {{ blog.description}}</li>
+{% endfor %}
+</ul>
+
+</body>
+</html>
