@@ -25,8 +25,10 @@ class Blog(DB_Base):
     url = Column(Text)
     avatar = Column(Text)
     post_count = Column(Integer)
+    updated = Column(DateTime)  # The time of the most recent post
+    last_visit = Column(DateTime)  # The last time of check
+    last_post = Column(Integer)  # How many posts was checked
     posts = relationship("Post")
-    updated = Column(DateTime)
 
 
 class Post(DB_Base):

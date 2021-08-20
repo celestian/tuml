@@ -139,13 +139,50 @@ class TumblrClient:
             url=blog['url'],
             avatar=blog['avatar'],
             post_count=blog['posts'],
-            updated=blog['updated']
+            updated=blog['updated'],
+            last_visit=blog['last_visit'],
+            last_post=blog['last_post'],
         )
 
         self._db_session.add(blog_record)
         self._db_session.commit()
 
         logging.info('Blog [%s] (%s) successfully saved.', blog['name'], blog['state'])
+
+    def _save_blog_info(self, state, blog_name):
+        blog_data = self._tumblr.blog_info(blog_name)
+
+        if 'errors' in blog_data:
+            if blog_data['meta']['status'] == 404:
+                blog = {
+                    'name': blog_name,
+                    'title': None,
+                    'state': BlogState.NOT_FOUND,
+                    'description': None,
+                    'url': None,
+                    'avatar': None,
+                    'posts': 0,
+                    'updated': datetime.utcnow(),
+                    'last_visit': datetime.utcnow(),
+                    'last_post': 0,
+                }
+                self._save_blog(blog)
+            else:
+                logging.warning(
+                    'Error [%i] occured while retrieving blog [%s].',
+                    blog_data['meta']['status'],
+                    blog_name
+                )
+        elif 'blog' in blog_data:
+            blog = blog_data['blog']
+            blog['avatar'] = get_avatar(blog)
+            blog['state'] = state
+            blog['updated'] = datetime.fromtimestamp(blog['updated'])
+            blog['last_visit'] = datetime.utcnow()
+            blog['last_post'] = 0
+            self._save_blog(blog)
+        else:
+            logging.warning('Error occured while retrieving blog data [%s].', blog_data)
 
     def enable_blog(self, blog_name):
 
@@ -160,35 +197,7 @@ class TumblrClient:
                 self._change_blog_state(stored_blog_record, BlogState.DISABLED, BlogState.ENABLED)
                 self._change_blog_state(stored_blog_record, BlogState.POTENTIAL, BlogState.ENABLED)
         else:
-            blog_data = self._tumblr.blog_info(blog_name)
-
-            if 'errors' in blog_data:
-                if blog_data['meta']['status'] == 404:
-                    blog = {
-                        'name': blog_name,
-                        'title': None,
-                        'state': BlogState.NOT_FOUND,
-                        'description': None,
-                        'url': None,
-                        'avatar': None,
-                        'post_count': 0,
-                        'updated': datetime.utcnow(),
-                    }
-                    self._save_blog(blog)
-                else:
-                    logging.warning(
-                        'Error [%i] occured while retrieving blog [%s].',
-                        blog_data['meta']['status'],
-                        blog_name
-                    )
-            elif 'blog' in blog_data:
-                blog = blog_data['blog']
-                blog['avatar'] = get_avatar(blog)
-                blog['state'] = BlogState.ENABLED
-                blog['updated'] = datetime.fromtimestamp(blog['updated'])
-                self._save_blog(blog)
-            else:
-                logging.warning('Error occured while retrieving blog data [%s].', blog_data)
+            self._save_blog_info(BlogState.ENABLED, blog_name)
 
     def disable_blog(self, blog_name):
 
@@ -210,36 +219,7 @@ class TumblrClient:
         if stored_blog_record:
             logging.info('Blog [%s] is marked as (%s).', blog_name, stored_blog_record.state)
         else:
-            # self._resource.check()
-            blog_data = self._tumblr.blog_info(blog_name)
-
-            if 'errors' in blog_data:
-                if blog_data['meta']['status'] == 404:
-                    blog = {
-                        'name': blog_name,
-                        'title': None,
-                        'state': BlogState.NOT_FOUND,
-                        'description': None,
-                        'url': None,
-                        'avatar': None,
-                        'post_count': 0,
-                        'updated': datetime.utcnow(),
-                    }
-                    self._save_blog(blog)
-                else:
-                    logging.warning(
-                        'Error [%i] occured while retrieving blog [%s].',
-                        blog_data['meta']['status'],
-                        blog_name
-                    )
-            elif 'blog' in blog_data:
-                blog = blog_data['blog']
-                blog['avatar'] = get_avatar(blog)
-                blog['state'] = BlogState.POTENTIAL
-                blog['updated'] = datetime.fromtimestamp(blog['updated'])
-                self._save_blog(blog)
-            else:
-                logging.warning('Error occured while retrieving blog data [%s].', blog_data)
+            self._save_blog_info(BlogState.POTENTIAL, blog_name)
 
     def update_blogs(self):
 
