@@ -17,7 +17,9 @@ class OutputHandler:
 
     def generate(self):
 
-        stored_blogs = self._db_session.query(Blog).filter(Blog.state == BlogState.POTENTIAL).order_by(Blog.posts.desc())
+        stored_blogs = self._db_session.query(Blog).filter(
+            Blog.state == BlogState.POTENTIAL).order_by(
+            Blog.posts.desc())
         blogs = stored_blogs.all()
 
         self._template_env.get_template('index.html').stream(blogs=blogs).dump(self._index_file)

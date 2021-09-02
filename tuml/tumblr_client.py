@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 from datetime import datetime
 from datetime import timedelta
 import json
@@ -17,6 +18,10 @@ def get_avatar(blog):
             avatar_url = avatar['url']
 
     return avatar_url
+
+
+def delta_in_hours(last_visit, updated):
+    return int((last_visit - updated) / timedelta(hours=1))
 
 
 class TumblrHandler:
@@ -40,6 +45,15 @@ class TumblrHandler:
         call = Call(time=timestamp, call=call, limit=limit, duration=duration)
         self._db_session.add(call)
         self._db_session.commit()
+
+    def _wait_for_limits(self):
+        tumblr_limits = self.get_limits()
+        while tumblr_limits['exceeding_limit']:
+            now = datetime.utcnow()
+            delta = 70 - now.second
+            logging.info('Sleep for [%i] seconds (limits [%s]).', delta, tumblr_limits)
+            time.sleep(delta)
+            tumblr_limits = self.get_limits()
 
     def get_limits(self):
 
@@ -84,10 +98,7 @@ class TumblrHandler:
 
     def blog_info(self, blog_name):
 
-        tumblr_limits = self.get_limits()
-        if tumblr_limits['exceeding_limit']:
-            logging.error('Close to exceeding the limits: %s.', tumblr_limits)
-            sys.exit(0)
+        self._wait_for_limits()
 
         timestamp = datetime.utcnow()
         blog_data = self._client.blog_info(blog_name)
@@ -98,10 +109,7 @@ class TumblrHandler:
 
     def posts(self, blog_name, limit, offset):
 
-        tumblr_limits = self.get_limits()
-        if tumblr_limits['exceeding_limit']:
-            logging.error('Close to exceeding the limits: %s.', tumblr_limits)
-            sys.exit(0)
+        self._wait_for_limits()
 
         timestamp = datetime.utcnow()
         posts_data = self._client.posts(blog_name, limit=limit, offset=offset, notes_info=True)
@@ -142,6 +150,7 @@ class TumblrClient:
             updated=blog['updated'],
             last_visit=blog['last_visit'],
             last_post=blog['last_post'],
+            age=blog['age'],
         )
 
         self._db_session.add(blog_record)
@@ -149,24 +158,44 @@ class TumblrClient:
 
         logging.info('Blog [%s] (%s) successfully saved.', blog['name'], blog['state'])
 
+    def _save_not_found_blog(self, blog_name):
+        blogs = self._db_session.query(Blog).filter(Blog.name == blog_name)
+        blog_record = blogs.first()
+        if blog_record:
+            blog_record = {
+                'state': BlogState.NOT_FOUND,
+                'description': None,
+                'url': None,
+                'avatar': None,
+                'posts': 0,
+                'updated': datetime.utcnow(),
+                'last_visit': datetime.utcnow(),
+                'last_post': 0,
+                'age': 0,
+            }
+            self._db_session.commit()
+        else:
+            blog = {
+                'name': blog_name,
+                'title': None,
+                'state': BlogState.NOT_FOUND,
+                'description': None,
+                'url': None,
+                'avatar': None,
+                'posts': 0,
+                'updated': datetime.utcnow(),
+                'last_visit': datetime.utcnow(),
+                'last_post': 0,
+                'age': 0,
+            }
+            self._save_blog(blog)
+
     def _save_blog_info(self, state, blog_name):
         blog_data = self._tumblr.blog_info(blog_name)
 
         if 'errors' in blog_data:
             if blog_data['meta']['status'] == 404:
-                blog = {
-                    'name': blog_name,
-                    'title': None,
-                    'state': BlogState.NOT_FOUND,
-                    'description': None,
-                    'url': None,
-                    'avatar': None,
-                    'posts': 0,
-                    'updated': datetime.utcnow(),
-                    'last_visit': datetime.utcnow(),
-                    'last_post': 0,
-                }
-                self._save_blog(blog)
+                self._save_not_found_blog(blog_name)
             else:
                 logging.warning(
                     'Error [%i] occured while retrieving blog [%s].',
@@ -179,6 +208,7 @@ class TumblrClient:
             blog['state'] = state
             blog['updated'] = datetime.fromtimestamp(blog['updated'])
             blog['last_visit'] = datetime.utcnow()
+            blog['age'] = delta_in_hours(blog['last_visit'], blog['updated'])
             blog['last_post'] = 0
             self._save_blog(blog)
         else:
@@ -225,13 +255,50 @@ class TumblrClient:
 
         stored_blogs = self._db_session.query(Blog).filter(Blog.state == BlogState.ENABLED)
         stored_blog_records = stored_blogs.all()
-        for blog in stored_blog_records:
-            posts_data = self._tumblr.posts(blog.name, limit=1000, offset=0)
-            if 'posts' in posts_data:
-                for post in posts_data['posts']:
-                    if 'notes' in post:
-                        for note in post['notes']:
-                            self.save_potential_blog(note['blog_name'])
+        for db_blog in stored_blog_records:
+            recent_blog = self._tumblr.blog_info(db_blog.name)
+            if 'errors' in recent_blog:
+                if recent_blog['meta']['status'] == 404:
+                    self._save_not_found_blog(db_blog.name)
+                else:
+                    logging.warning(
+                        'Error [%i] occured while retrieving blog [%s].',
+                        recent_blog['meta']['status'], db_blog.name)
+            elif 'blog' in recent_blog:
+                setattr(db_blog, 'post_count', recent_blog['blog']['posts'])
+                setattr(db_blog, 'updated', datetime.fromtimestamp(recent_blog['blog']['updated']))
+                setattr(db_blog, 'last_visit', datetime.utcnow())
+                setattr(db_blog, 'age', delta_in_hours(db_blog.last_visit, db_blog.updated))
+                #db_blog['last_post'] = 0
+                self._db_session.commit()
+            else:
+                logging.warning('Error occured while retrieving blog data [%s].', recent_blog)
 
+    def update_posts(self):
+        count = 0
+
+        stored_blogs = self._db_session.query(Blog).filter(Blog.state == BlogState.ENABLED)
+        stored_blog_records = stored_blogs.all()
+        for blog in stored_blog_records:
+            count = count + blog.post_count - blog.last_post
+        print(count)
+
+#            posts_data = self._tumblr.posts(blog.name, limit=1, offset=0)
+#            if 'posts' in posts_data:
+#
+#                print(json.dumps(posts_data, indent=2, sort_keys=True))
+#                break
+#
+#                for post in posts_data['posts']:
+#
+#                    print(json.dumps(post, indent=2, sort_keys=True))
+#                    break
+#
+#                    if 'notes' in post:
+#                        for note in post['notes']:
+#                            self.save_potential_blog(note['blog_name'])
+#                break
+#            break
+#
     def limits(self):
         print(self._tumblr.get_limits())

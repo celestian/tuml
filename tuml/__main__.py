@@ -98,11 +98,12 @@ def main():
     if args['update']:
 
         database = init_db(config)
-        #client = TumblrClient(config, database)
-        #client.update_blogs()
+        client = TumblrClient(config, database)
+        # client.update_blogs()
+        client.update_posts()
 
-        output = OutputHandler(config, database)
-        output.generate()
+        #output = OutputHandler(config, database)
+        # output.generate()
 
     if args['limits']:
 

@@ -28,6 +28,7 @@ class Blog(DB_Base):
     updated = Column(DateTime)  # The time of the most recent post
     last_visit = Column(DateTime)  # The last time of check
     last_post = Column(Integer)  # How many posts was checked
+    age = Column(Integer)  # last_visit - updated in hours
     posts = relationship("Post")
 
 
